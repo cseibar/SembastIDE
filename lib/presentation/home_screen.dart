@@ -189,58 +189,93 @@ class HomeScreen extends ConsumerWidget {
                                   ),
                                 ),
                                 Expanded(
-                                  child: state.records.isEmpty
-                                      ? Center(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
+                                  child: Column(
+                                    children: [
+                                      if (state.totalRecords > 200)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              const Text('No records found.'),
-                                              const SizedBox(height: 16),
-                                              ElevatedButton.icon(
-                                                onPressed: () {
-                                                  viewModel.recoverStore(state.selectedStore!);
-                                                },
-                                                icon: const Icon(Icons.build),
-                                                label: const Text('Force Recover Corrupted Data'),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.orange,
-                                                  foregroundColor: Colors.white,
-                                                ),
+                                              Text(
+                                                'Showing records ${(state.currentPage * 200) + 1} - ${((state.currentPage + 1) * 200).clamp(0, state.totalRecords)} of ${state.totalRecords}',
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
                                               ),
-                                              const SizedBox(height: 16),
-                                              ElevatedButton(
-                                                onPressed: () async {
-                                                  final lines = await ref.read(databaseServiceProvider).getRawLinesForStore(state.selectedStore!);
-                                                  if (context.mounted) {
-                                                    showDialog(
-                                                      context: context,
-                                                      builder: (context) => AlertDialog(
-                                                        title: Text('Raw Data for ${state.selectedStore}'),
-                                                        content: SizedBox(
-                                                          width: double.maxFinite,
-                                                          child: SingleChildScrollView(
-                                                            child: Text(
-                                                              lines.isEmpty ? 'The file has NO lines with this store name.' : lines.join('\n'),
-                                                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        actions: [
-                                                          TextButton(
-                                                            onPressed: () => Navigator.pop(context),
-                                                            child: const Text('Close'),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                                child: const Text('Debug Raw File Content'),
-                                              ),
+                                              Row(
+                                                children: [
+                                                  IconButton(
+                                                    icon: const Icon(Icons.chevron_left),
+                                                    onPressed: state.currentPage > 0
+                                                        ? () => viewModel.loadRecords(state.selectedStore!, page: state.currentPage - 1)
+                                                        : null,
+                                                  ),
+                                                  IconButton(
+                                                    icon: const Icon(Icons.chevron_right),
+                                                    onPressed: (state.currentPage + 1) * 200 < state.totalRecords
+                                                        ? () => viewModel.loadRecords(state.selectedStore!, page: state.currentPage + 1)
+                                                        : null,
+                                                  ),
+                                                ],
+                                              )
                                             ],
                                           ),
-                                        )
-                                      : RecordsTable(records: state.records),
+                                        ),
+                                      Expanded(
+                                        child: state.records.isEmpty
+                                            ? Center(
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Text('No records found.'),
+                                                    const SizedBox(height: 16),
+                                                    ElevatedButton.icon(
+                                                      onPressed: () {
+                                                        viewModel.recoverStore(state.selectedStore!);
+                                                      },
+                                                      icon: const Icon(Icons.build),
+                                                      label: const Text('Force Recover Corrupted Data'),
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: Colors.orange,
+                                                        foregroundColor: Colors.white,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 16),
+                                                    ElevatedButton(
+                                                      onPressed: () async {
+                                                        final lines = await ref.read(databaseServiceProvider).getRawLinesForStore(state.selectedStore!);
+                                                        if (context.mounted) {
+                                                          showDialog(
+                                                            context: context,
+                                                            builder: (context) => AlertDialog(
+                                                              title: Text('Raw Data for ${state.selectedStore}'),
+                                                              content: SizedBox(
+                                                                width: double.maxFinite,
+                                                                child: SingleChildScrollView(
+                                                                  child: Text(
+                                                                    lines.isEmpty ? 'The file has NO lines with this store name.' : lines.join('\n'),
+                                                                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              actions: [
+                                                                TextButton(
+                                                                  onPressed: () => Navigator.pop(context),
+                                                                  child: const Text('Close'),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+                                                        }
+                                                      },
+                                                      child: const Text('Debug Raw File Content'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              )
+                                            : RecordsTable(records: state.records),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),

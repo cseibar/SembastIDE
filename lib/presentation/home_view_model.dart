@@ -15,6 +15,8 @@ class HomeState {
   final List<String> recentDbs;
   final bool isLoading;
   final String? error;
+  final int currentPage;
+  final int totalRecords;
 
   HomeState({
     this.dbPath,
@@ -24,6 +26,8 @@ class HomeState {
     this.recentDbs = const [],
     this.isLoading = false,
     this.error,
+    this.currentPage = 0,
+    this.totalRecords = 0,
   });
 
   HomeState copyWith({
@@ -34,6 +38,8 @@ class HomeState {
     List<String>? recentDbs,
     bool? isLoading,
     String? error,
+    int? currentPage,
+    int? totalRecords,
   }) {
     return HomeState(
       dbPath: dbPath ?? this.dbPath,
@@ -42,7 +48,9 @@ class HomeState {
       records: records ?? this.records,
       recentDbs: recentDbs ?? this.recentDbs,
       isLoading: isLoading ?? this.isLoading,
-      error: error, // Can be null
+      error: error, // Allow nulling error
+      currentPage: currentPage ?? this.currentPage,
+      totalRecords: totalRecords ?? this.totalRecords,
     );
   }
 }
@@ -98,15 +106,20 @@ class HomeViewModel extends _$HomeViewModel {
     }
   }
 
-  Future<void> loadRecords(String storeName) async {
-    debugPrint('loadRecords started for store: $storeName');
+  Future<void> loadRecords(String storeName, {int page = 0}) async {
     state = state.copyWith(isLoading: true, selectedStore: storeName, error: null);
     try {
       final repo = _getRepo();
-      final records = await repo.getAllRecords(storeName);
-      state = state.copyWith(records: records, isLoading: false);
-    } catch (e, stack) {
-      debugPrint('Error loading records: $e\n$stack');
+      final totalRecords = await repo.countRecords(storeName);
+      final records = await repo.getAllRecords(storeName, offset: page * 200, limit: 200);
+      
+      state = state.copyWith(
+        records: records, 
+        isLoading: false,
+        currentPage: page,
+        totalRecords: totalRecords,
+      );
+    } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }

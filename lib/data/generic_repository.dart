@@ -12,18 +12,14 @@ class GenericRepository {
     return StoreRef(storeName);
   }
 
-  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName) async {
-    print('DEBUG: getAllRecords called for $storeName');
+  Future<int> countRecords(String storeName) async {
     final store = _getStore(storeName);
-    try {
-      print('DEBUG: Calling store.find()');
-      final records = await store.find(db, finder: Finder(limit: 100)).timeout(const Duration(seconds: 5));
-      print('DEBUG: store.find() returned ${records.length} records');
-      return records;
-    } catch (e) {
-      print('DEBUG: store.find() timed out or threw error: $e');
-      throw Exception('Sembast find() failed or timed out: $e');
-    }
+    return await store.count(db);
+  }
+
+  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName, {int offset = 0, int limit = 200}) async {
+    final store = _getStore(storeName);
+    return await store.find(db, finder: Finder(offset: offset, limit: limit));
   }
 
   Future<dynamic> addRecord(String storeName, Map<String, dynamic> data) async {
