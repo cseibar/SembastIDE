@@ -2,11 +2,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../utils/export_service.dart';
 import 'home_view_model.dart';
 import 'providers.dart';
 import 'record_editor_dialog.dart';
 import 'widgets/records_table.dart';
+import 'widgets/export_dialog.dart';
+import 'widgets/import_dialog.dart';
+import 'widgets/new_db_dialog.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -18,8 +20,23 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sembast IDE'),
+        title: Text(state.dbPath != null ? 'Sembast IDE - ${state.dbPath!.split(RegExp(r'[\\/]')).last}' : 'Sembast IDE'),
         actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.add_box, color: Colors.white),
+            label: const Text('Nueva', style: TextStyle(color: Colors.white)),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => NewDbDialog(
+                  onCreate: (folder, name) async {
+                    await viewModel.createNewDatabase(folder, name);
+                  },
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: 'Open Database',
             icon: const Icon(Icons.folder_open),
@@ -33,33 +50,63 @@ class HomeScreen extends ConsumerWidget {
               }
             },
           ),
-          if (state.selectedStore != null) ...[
-            PopupMenuButton<String>(
-              tooltip: 'Import/Export',
-              icon: const Icon(Icons.import_export),
-              onSelected: (value) async {
-                final storeName = state.selectedStore!;
-                if (value == 'export_json') {
-                  await ExportService.exportToJson(storeName, state.records);
-                } else if (value == 'export_csv') {
-                  await ExportService.exportToCsv(storeName, state.records);
-                } else if (value == 'export_db') {
-                  await ExportService.exportToSembast(storeName, state.records);
-                } else if (value == 'import_json') {
-                  final data = await ExportService.importFromJson();
-                  if (data != null) {
-                    await viewModel.importFromJsonData(data);
-                  }
+          if (state.dbPath != null) ...[
+            TextButton.icon(
+              icon: const Icon(Icons.upload_file, color: Colors.white),
+              label: const Text('Export', style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                final stores = state.storeNames.where((s) => s != '_main').toList();
+                showDialog(
+                  context: context,
+                  builder: (context) => ExportDialog(
+                    storeNames: stores,
+                    onExport: (selectedStores, format) async {
+                      await viewModel.exportStores(selectedStores, format);
+                    },
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.download, color: Colors.white),
+              label: const Text('Import', style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                final result = await FilePicker.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['csv', 'json'],
+                  allowMultiple: true,
+                  dialogTitle: 'Selecciona archivos CSV o JSON para importar',
+                );
+
+                if (result != null && result.files.isNotEmpty) {
+                  if (!context.mounted) return;
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => ImportDialog(
+                      files: result.files,
+                      onImport: (tasks) async {
+                        await viewModel.processImport(tasks);
+                      },
+                    ),
+                  );
                 }
               },
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'import_json', child: Text('Import JSON')),
-                const PopupMenuDivider(),
-                const PopupMenuItem(value: 'export_json', child: Text('Export to JSON')),
-                const PopupMenuItem(value: 'export_csv', child: Text('Export to CSV')),
-                const PopupMenuItem(value: 'export_db', child: Text('Export to Sembast DB')),
-              ],
             ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.backup, color: Colors.white),
+              label: const Text('Backup', style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                await viewModel.backupDatabase();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Backup creado con éxito')),
+                );
+              },
+            ),
+            const SizedBox(width: 16),
           ],
           IconButton(
             tooltip: 'Refresh Stores',
@@ -178,12 +225,48 @@ class HomeScreen extends ConsumerWidget {
                                         'Records in ${state.selectedStore}',
                                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                                       ),
-                                      ElevatedButton.icon(
-                                        onPressed: () {
-                                          _showEditor(context, ref, null, null);
-                                        },
-                                        icon: const Icon(Icons.add),
-                                        label: const Text('Add Record'),
+                                      Row(
+                                        children: [
+                                          ElevatedButton.icon(
+                                            onPressed: () {
+                                              _showEditor(context, ref, null, null);
+                                            },
+                                            icon: const Icon(Icons.add),
+                                            label: const Text('Add Record'),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.red,
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            onPressed: () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (dialogContext) => AlertDialog(
+                                                  title: Text('Borrar todos los registros de ${state.selectedStore}'),
+                                                  content: Text('¿Seguro que quieres borrar todos los registros de la tabla ${state.selectedStore}? Esta acción no se puede deshacer.'),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () => Navigator.pop(dialogContext),
+                                                      child: const Text('No'),
+                                                    ),
+                                                    ElevatedButton(
+                                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                                      onPressed: () {
+                                                        Navigator.pop(dialogContext);
+                                                        viewModel.clearStore(state.selectedStore!);
+                                                      },
+                                                      child: const Text('Sí', style: TextStyle(color: Colors.white)),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                            icon: const Icon(Icons.delete_sweep),
+                                            label: const Text('Delete all records'),
+                                          ),
+                                        ],
                                       )
                                     ],
                                   ),

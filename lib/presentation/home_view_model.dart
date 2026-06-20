@@ -1,5 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
+import 'package:path/path.dart' as p;
+import 'package:archive/archive_io.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:sembast/sembast.dart';
 import '../data/generic_repository.dart';
@@ -218,6 +223,200 @@ class HomeViewModel extends _$HomeViewModel {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
+
+  Future<void> exportStores(List<String> storesToExport, String format) async {
+    try {
+      final selectedDirectory = await FilePicker.getDirectoryPath(
+        dialogTitle: 'Select folder to save exports',
+      );
+
+      if (selectedDirectory == null) return; // User canceled
+
+      final repo = _getRepo();
+      state = state.copyWith(isLoading: true, error: null);
+
+      for (var storeName in storesToExport) {
+        final records = await repo.getAllRecordsUnpaginated(storeName);
+        
+        final filePath = p.join(selectedDirectory, '$storeName.${format.toLowerCase()}');
+        final file = File(filePath);
+
+        if (format.toLowerCase() == 'json') {
+          final jsonData = records.map((r) => {'key': r.key, 'value': r.value}).toList();
+          await file.writeAsString(jsonEncode(jsonData));
+        } else if (format.toLowerCase() == 'csv') {
+          if (records.isEmpty) continue;
+          
+          final Set<String> headers = {'key'};
+          for (var r in records) {
+            if (r.value is Map) {
+              headers.addAll((r.value as Map).keys.map((e) => e.toString()));
+            }
+          }
+          final headerList = headers.toList();
+          
+          final List<List<dynamic>> rows = [headerList];
+          
+          for (var r in records) {
+            final row = <dynamic>[r.key];
+            final val = r.value;
+            for (var i = 1; i < headerList.length; i++) {
+              if (val is Map && val.containsKey(headerList[i])) {
+                row.add(val[headerList[i]]);
+              } else {
+                row.add('');
+              }
+            }
+            rows.add(row);
+          }
+          
+          final csvData = csv.encode(rows);
+          await file.writeAsString(csvData);
+        }
+      }
+      
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Export failed: $e');
+    }
+  }
+
+  Future<void> processImport(List<ImportTaskModel> tasks) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      final repo = _getRepo();
+      bool importedAny = false;
+
+      for (var task in tasks) {
+        final entity = File(task.filePath);
+        if (!await entity.exists()) continue;
+
+        final ext = p.extension(entity.path).toLowerCase();
+        final storeName = task.storeName;
+        
+        final content = await entity.readAsString();
+        final recordsToAdd = <Map<String, dynamic>>[];
+
+        if (ext == '.json') {
+          try {
+            final decoded = jsonDecode(content);
+            if (decoded is List) {
+              for (var item in decoded) {
+                if (item is Map) {
+                  if (item.containsKey('key') && item.containsKey('value')) {
+                    final parsedKey = item['key'];
+                    final parsedValue = item['value'];
+                    if (parsedValue is Map<String, dynamic>) {
+                      recordsToAdd.add({'__key': parsedKey, 'value': parsedValue});
+                    } else {
+                       recordsToAdd.add({'__key': parsedKey, 'value': {'value': parsedValue}});
+                    }
+                  } else {
+                     recordsToAdd.add({'__key': null, 'value': item.cast<String, dynamic>()});
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Failed to parse JSON for $storeName: $e');
+          }
+        } else if (ext == '.csv') {
+          try {
+            final rows = csv.decode(content);
+            if (rows.length > 1) {
+              final headers = rows[0].map((e) => e.toString()).toList();
+              for (var i = 1; i < rows.length; i++) {
+                final row = rows[i];
+                final map = <String, dynamic>{};
+                dynamic parsedKey;
+                for (var j = 0; j < headers.length; j++) {
+                  if (j < row.length) {
+                    if (headers[j] == 'key') {
+                      parsedKey = row[j];
+                    } else {
+                      map[headers[j]] = row[j];
+                    }
+                  }
+                }
+                // Try parsing int keys
+                if (parsedKey is String && int.tryParse(parsedKey) != null) {
+                  parsedKey = int.parse(parsedKey);
+                }
+                recordsToAdd.add({'__key': parsedKey, 'value': map});
+              }
+            }
+          } catch (e) {
+            debugPrint('Failed to parse CSV for $storeName: $e');
+          }
+        }
+
+        if (recordsToAdd.isNotEmpty) {
+          await repo.executeImportTask(storeName, recordsToAdd, task.action);
+          importedAny = true;
+        }
+      }
+
+      if (importedAny) {
+        final newStores = await ref.read(databaseServiceProvider).getStoreNames();
+        state = state.copyWith(storeNames: newStores);
+        if (state.selectedStore != null) {
+          await loadRecords(state.selectedStore!, page: state.currentPage);
+        }
+      }
+      
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Import failed: $e');
+    }
+  }
+  Future<void> createNewDatabase(String folderPath, String dbName) async {
+    String finalName = dbName.trim();
+    if (!finalName.endsWith('.db')) {
+      finalName += '.db';
+    }
+    final fullPath = p.join(folderPath, finalName);
+    await openDatabase(fullPath);
+  }
+
+  Future<void> clearStore(String storeName) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      final repo = _getRepo();
+      await repo.clearStore(storeName);
+      if (state.selectedStore == storeName) {
+        await loadRecords(storeName, page: 1);
+      }
+    } catch (e) {
+      state = state.copyWith(error: 'Failed to clear store: $e', isLoading: false);
+    }
+  }
+
+  Future<void> backupDatabase() async {
+    if (state.dbPath == null) return;
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      
+      final dbFile = File(state.dbPath!);
+      if (!await dbFile.exists()) throw Exception('Database file not found');
+
+      final now = DateTime.now();
+      final timestamp = '${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}_${now.hour.toString().padLeft(2,'0')}${now.minute.toString().padLeft(2,'0')}${now.second.toString().padLeft(2,'0')}';
+      
+      final dbName = p.basenameWithoutExtension(state.dbPath!);
+      final dir = p.dirname(state.dbPath!);
+      final backupFileName = '${dbName}_$timestamp.zip';
+      final backupPath = p.join(dir, backupFileName);
+
+      final zipEncoder = ZipFileEncoder();
+      zipEncoder.create(backupPath);
+      zipEncoder.addFile(dbFile);
+      zipEncoder.close();
+      
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(error: 'Backup error: $e', isLoading: false);
+    }
+  }
 }
 
 class _RecoveredRecord implements RecordSnapshot<dynamic, dynamic> {
@@ -241,4 +440,16 @@ class _RecoveredRecord implements RecordSnapshot<dynamic, dynamic> {
     }
     return null;
   }
+}
+
+class ImportTaskModel {
+  String storeName;
+  final String filePath;
+  ImportAction action;
+
+  ImportTaskModel({
+    required this.storeName,
+    required this.filePath,
+    this.action = ImportAction.append,
+  });
 }
