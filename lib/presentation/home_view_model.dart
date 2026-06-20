@@ -22,6 +22,7 @@ class HomeState {
   final String? error;
   final int currentPage;
   final int totalRecords;
+  final String searchQuery;
 
   HomeState({
     this.dbPath,
@@ -33,6 +34,7 @@ class HomeState {
     this.error,
     this.currentPage = 0,
     this.totalRecords = 0,
+    this.searchQuery = '',
   });
 
   HomeState copyWith({
@@ -45,6 +47,7 @@ class HomeState {
     String? error,
     int? currentPage,
     int? totalRecords,
+    String? searchQuery,
   }) {
     return HomeState(
       dbPath: dbPath ?? this.dbPath,
@@ -56,6 +59,7 @@ class HomeState {
       error: error, // Allow nulling error
       currentPage: currentPage ?? this.currentPage,
       totalRecords: totalRecords ?? this.totalRecords,
+      searchQuery: searchQuery ?? this.searchQuery,
     );
   }
 }
@@ -87,14 +91,14 @@ class HomeViewModel extends _$HomeViewModel {
     try {
       final dbService = ref.read(databaseServiceProvider);
       await dbService.openDatabase(path);
-      
+
       // Save to recent
       final settingsService = ref.read(settingsServiceProvider);
       await settingsService.addRecentDatabase(path);
       final recents = await settingsService.getRecentDatabases();
-      
+
       final stores = await dbService.getStoreNames();
-      
+
       state = state.copyWith(
         dbPath: path,
         storeNames: stores,
@@ -102,7 +106,7 @@ class HomeViewModel extends _$HomeViewModel {
         recentDbs: recents,
         isLoading: false,
       );
-      
+
       if (state.selectedStore != null) {
         await loadRecords(state.selectedStore!);
       }
@@ -111,21 +115,39 @@ class HomeViewModel extends _$HomeViewModel {
     }
   }
 
-  Future<void> loadRecords(String storeName, {int page = 0}) async {
-    state = state.copyWith(isLoading: true, selectedStore: storeName, error: null);
+  Future<void> loadRecords(String storeName, {int page = 1}) async {
     try {
-      final repo = _getRepo();
-      final totalRecords = await repo.countRecords(storeName);
-      final records = await repo.getAllRecords(storeName, offset: page * 200, limit: 200);
-      
       state = state.copyWith(
-        records: records, 
-        isLoading: false,
+        isLoading: true,
+        error: null,
+        selectedStore: storeName,
+      );
+      final repo = _getRepo();
+
+      final totalRecords = await repo.countRecords(storeName, query: state.searchQuery);
+      
+      final offset = (page - 1) * 200;
+      final records = await repo.getAllRecords(storeName, offset: offset, limit: 200, query: state.searchQuery);
+
+      state = state.copyWith(
+        records: records,
         currentPage: page,
         totalRecords: totalRecords,
+        isLoading: false,
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        error: 'Failed to load records: $e',
+        isLoading: false,
+      );
+    }
+  }
+
+  Future<void> setSearchQuery(String query) async {
+    if (state.searchQuery == query) return;
+    state = state.copyWith(searchQuery: query);
+    if (state.selectedStore != null) {
+      await loadRecords(state.selectedStore!, page: 1);
     }
   }
 
@@ -134,12 +156,17 @@ class HomeViewModel extends _$HomeViewModel {
     try {
       final dbService = ref.read(databaseServiceProvider);
       final rawData = await dbService.recoverStoreData(storeName);
-      
-      final recoveredRecords = rawData.map((data) => _RecoveredRecord(data['key'], data['value'])).toList();
-      
+
+      final recoveredRecords = rawData
+          .map((data) => _RecoveredRecord(data['key'], data['value']))
+          .toList();
+
       state = state.copyWith(records: recoveredRecords, isLoading: false);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: 'Error recovering store: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Error recovering store: $e',
+      );
     }
   }
 
@@ -180,26 +207,26 @@ class HomeViewModel extends _$HomeViewModel {
     if (state.dbPath == null) return;
     state = state.copyWith(isLoading: true, error: null);
     try {
-       final dbService = ref.read(databaseServiceProvider);
-       final stores = await dbService.getStoreNames();
-       
-       // Keep selected store if it still exists
-       String? newSelectedStore = state.selectedStore;
-       if (!stores.contains(newSelectedStore)) {
-         newSelectedStore = stores.isNotEmpty ? stores.first : null;
-       }
+      final dbService = ref.read(databaseServiceProvider);
+      final stores = await dbService.getStoreNames();
 
-       state = state.copyWith(
-         storeNames: stores,
-         selectedStore: newSelectedStore,
-         isLoading: false,
-       );
+      // Keep selected store if it still exists
+      String? newSelectedStore = state.selectedStore;
+      if (!stores.contains(newSelectedStore)) {
+        newSelectedStore = stores.isNotEmpty ? stores.first : null;
+      }
 
-       if (newSelectedStore != null) {
-         await loadRecords(newSelectedStore);
-       } else {
-         state = state.copyWith(records: []);
-       }
+      state = state.copyWith(
+        storeNames: stores,
+        selectedStore: newSelectedStore,
+        isLoading: false,
+      );
+
+      if (newSelectedStore != null) {
+        await loadRecords(newSelectedStore);
+      } else {
+        state = state.copyWith(records: []);
+      }
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -210,12 +237,19 @@ class HomeViewModel extends _$HomeViewModel {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final repo = _getRepo();
-      
+
       for (var item in data) {
         if (item.containsKey('_key')) {
-          await repo.updateRecord(state.selectedStore!, item['_key'], item['value'] as Map<String, dynamic>);
+          await repo.updateRecord(
+            state.selectedStore!,
+            item['_key'],
+            item['value'] as Map<String, dynamic>,
+          );
         } else {
-          await repo.addRecord(state.selectedStore!, item['value'] as Map<String, dynamic>);
+          await repo.addRecord(
+            state.selectedStore!,
+            item['value'] as Map<String, dynamic>,
+          );
         }
       }
       await loadRecords(state.selectedStore!);
@@ -237,16 +271,21 @@ class HomeViewModel extends _$HomeViewModel {
 
       for (var storeName in storesToExport) {
         final records = await repo.getAllRecordsUnpaginated(storeName);
-        
-        final filePath = p.join(selectedDirectory, '$storeName.${format.toLowerCase()}');
+
+        final filePath = p.join(
+          selectedDirectory,
+          '$storeName.${format.toLowerCase()}',
+        );
         final file = File(filePath);
 
         if (format.toLowerCase() == 'json') {
-          final jsonData = records.map((r) => {'key': r.key, 'value': r.value}).toList();
+          final jsonData = records
+              .map((r) => {'key': r.key, 'value': r.value})
+              .toList();
           await file.writeAsString(jsonEncode(jsonData));
         } else if (format.toLowerCase() == 'csv') {
           if (records.isEmpty) continue;
-          
+
           final Set<String> headers = {'key'};
           for (var r in records) {
             if (r.value is Map) {
@@ -254,9 +293,9 @@ class HomeViewModel extends _$HomeViewModel {
             }
           }
           final headerList = headers.toList();
-          
+
           final List<List<dynamic>> rows = [headerList];
-          
+
           for (var r in records) {
             final row = <dynamic>[r.key];
             final val = r.value;
@@ -269,12 +308,12 @@ class HomeViewModel extends _$HomeViewModel {
             }
             rows.add(row);
           }
-          
+
           final csvData = csv.encode(rows);
           await file.writeAsString(csvData);
         }
       }
-      
+
       state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Export failed: $e');
@@ -293,7 +332,7 @@ class HomeViewModel extends _$HomeViewModel {
 
         final ext = p.extension(entity.path).toLowerCase();
         final storeName = task.storeName;
-        
+
         final content = await entity.readAsString();
         final recordsToAdd = <Map<String, dynamic>>[];
 
@@ -307,12 +346,21 @@ class HomeViewModel extends _$HomeViewModel {
                     final parsedKey = item['key'];
                     final parsedValue = item['value'];
                     if (parsedValue is Map<String, dynamic>) {
-                      recordsToAdd.add({'__key': parsedKey, 'value': parsedValue});
+                      recordsToAdd.add({
+                        '__key': parsedKey,
+                        'value': parsedValue,
+                      });
                     } else {
-                       recordsToAdd.add({'__key': parsedKey, 'value': {'value': parsedValue}});
+                      recordsToAdd.add({
+                        '__key': parsedKey,
+                        'value': {'value': parsedValue},
+                      });
                     }
                   } else {
-                     recordsToAdd.add({'__key': null, 'value': item.cast<String, dynamic>()});
+                    recordsToAdd.add({
+                      '__key': null,
+                      'value': item.cast<String, dynamic>(),
+                    });
                   }
                 }
               }
@@ -357,18 +405,21 @@ class HomeViewModel extends _$HomeViewModel {
       }
 
       if (importedAny) {
-        final newStores = await ref.read(databaseServiceProvider).getStoreNames();
+        final newStores = await ref
+            .read(databaseServiceProvider)
+            .getStoreNames();
         state = state.copyWith(storeNames: newStores);
         if (state.selectedStore != null) {
           await loadRecords(state.selectedStore!, page: state.currentPage);
         }
       }
-      
+
       state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Import failed: $e');
     }
   }
+
   Future<void> createNewDatabase(String folderPath, String dbName) async {
     String finalName = dbName.trim();
     if (!finalName.endsWith('.db')) {
@@ -376,6 +427,34 @@ class HomeViewModel extends _$HomeViewModel {
     }
     final fullPath = p.join(folderPath, finalName);
     await openDatabase(fullPath);
+  }
+
+  Future<void> deleteStore(String storeName) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      final repo = _getRepo();
+      await repo.deleteStore(storeName);
+
+      final newStores = await ref.read(databaseServiceProvider).getStoreNames();
+      String? nextStore;
+      if (state.selectedStore == storeName) {
+        nextStore = newStores.isNotEmpty ? newStores.first : null;
+      } else {
+        nextStore = state.selectedStore;
+      }
+
+      state = state.copyWith(storeNames: newStores, selectedStore: nextStore);
+      if (nextStore != null) {
+        await loadRecords(nextStore, page: 1);
+      } else {
+        state = state.copyWith(records: [], totalRecords: 0, isLoading: false);
+      }
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to delete store: $e',
+        isLoading: false,
+      );
+    }
   }
 
   Future<void> clearStore(String storeName) async {
@@ -387,7 +466,10 @@ class HomeViewModel extends _$HomeViewModel {
         await loadRecords(storeName, page: 1);
       }
     } catch (e) {
-      state = state.copyWith(error: 'Failed to clear store: $e', isLoading: false);
+      state = state.copyWith(
+        error: 'Failed to clear store: $e',
+        isLoading: false,
+      );
     }
   }
 
@@ -395,13 +477,14 @@ class HomeViewModel extends _$HomeViewModel {
     if (state.dbPath == null) return;
     try {
       state = state.copyWith(isLoading: true, error: null);
-      
+
       final dbFile = File(state.dbPath!);
       if (!await dbFile.exists()) throw Exception('Database file not found');
 
       final now = DateTime.now();
-      final timestamp = '${now.year}${now.month.toString().padLeft(2,'0')}${now.day.toString().padLeft(2,'0')}_${now.hour.toString().padLeft(2,'0')}${now.minute.toString().padLeft(2,'0')}${now.second.toString().padLeft(2,'0')}';
-      
+      final timestamp =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+
       final dbName = p.basenameWithoutExtension(state.dbPath!);
       final dir = p.dirname(state.dbPath!);
       final backupFileName = '${dbName}_$timestamp.zip';
@@ -411,7 +494,7 @@ class HomeViewModel extends _$HomeViewModel {
       zipEncoder.create(backupPath);
       zipEncoder.addFile(dbFile);
       zipEncoder.close();
-      
+
       state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(error: 'Backup error: $e', isLoading: false);

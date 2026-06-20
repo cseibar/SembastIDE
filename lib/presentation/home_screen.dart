@@ -192,13 +192,61 @@ class HomeScreen extends ConsumerWidget {
                               itemBuilder: (context, index) {
                                 final store = state.storeNames[index];
                                 final isSelected = store == state.selectedStore;
-                                return ListTile(
-                                  title: Text(store),
-                                  selected: isSelected,
-                                  selectedTileColor: Theme.of(context).colorScheme.primary.withAlpha(26),
-                                  onTap: () {
-                                    viewModel.loadRecords(store);
+                                return GestureDetector(
+                                  onSecondaryTapDown: (details) {
+                                    showMenu(
+                                      context: context,
+                                      position: RelativeRect.fromLTRB(
+                                        details.globalPosition.dx,
+                                        details.globalPosition.dy,
+                                        details.globalPosition.dx,
+                                        details.globalPosition.dy,
+                                      ),
+                                      items: [
+                                        PopupMenuItem(
+                                          value: 'delete',
+                                          child: const Text('Borrar store', style: TextStyle(color: Colors.red)),
+                                          onTap: () {
+                                            Future.delayed(
+                                              const Duration(milliseconds: 10),
+                                              () {
+                                                if (!context.mounted) return;
+                                                showDialog(
+                                                  context: context,
+                                                  builder: (dialogCtx) => AlertDialog(
+                                                    title: Text('Borrar store $store'),
+                                                    content: Text('¿Seguro que quieres borrar la tabla "$store" por completo? Se perderán todos sus datos y no se puede deshacer.'),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () => Navigator.pop(dialogCtx),
+                                                        child: const Text('Cancelar'),
+                                                      ),
+                                                      ElevatedButton(
+                                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                                        onPressed: () {
+                                                          Navigator.pop(dialogCtx);
+                                                          viewModel.deleteStore(store);
+                                                        },
+                                                        child: const Text('Borrar', style: TextStyle(color: Colors.white)),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    );
                                   },
+                                  child: ListTile(
+                                    title: Text(store),
+                                    selected: isSelected,
+                                    selectedTileColor: Theme.of(context).colorScheme.primary.withAlpha(26),
+                                    onTap: () {
+                                      viewModel.loadRecords(store);
+                                    },
+                                  ),
                                 );
                               },
                             ),
@@ -221,9 +269,27 @@ class HomeScreen extends ConsumerWidget {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        'Records in ${state.selectedStore}',
-                                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Text(
+                                              'Records in ${state.selectedStore}',
+                                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                            ),
+                                            const SizedBox(width: 24),
+                                            Expanded(
+                                              child: ConstrainedBox(
+                                                constraints: const BoxConstraints(maxWidth: 400),
+                                                child: StoreSearchBar(
+                                                  initialQuery: state.searchQuery,
+                                                  onSubmitted: (value) {
+                                                    viewModel.setSearchQuery(value);
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                       Row(
                                         children: [
@@ -384,6 +450,72 @@ class HomeScreen extends ConsumerWidget {
             }
           },
         );
+      },
+    );
+  }
+}
+
+class StoreSearchBar extends StatefulWidget {
+  final String initialQuery;
+  final Function(String) onSubmitted;
+
+  const StoreSearchBar({
+    super.key,
+    required this.initialQuery,
+    required this.onSubmitted,
+  });
+
+  @override
+  State<StoreSearchBar> createState() => _StoreSearchBarState();
+}
+
+class _StoreSearchBarState extends State<StoreSearchBar> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialQuery);
+  }
+
+  @override
+  void didUpdateWidget(StoreSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialQuery != oldWidget.initialQuery &&
+        _controller.text != widget.initialQuery) {
+      _controller.text = widget.initialQuery;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+        hintText: 'Buscar en todos los registros...',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onSubmitted('');
+                },
+              )
+            : null,
+        border: const OutlineInputBorder(),
+        isDense: true,
+        contentPadding: const EdgeInsets.all(8),
+      ),
+      onSubmitted: widget.onSubmitted,
+      onChanged: (val) {
+        setState(() {}); // show/hide clear icon
       },
     );
   }

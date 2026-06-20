@@ -1,4 +1,5 @@
 import 'package:sembast/sembast.dart';
+import 'package:flutter/foundation.dart';
 
 class GenericRepository {
   final Database db;
@@ -12,14 +13,26 @@ class GenericRepository {
     return StoreRef(storeName);
   }
 
-  Future<int> countRecords(String storeName) async {
+  Future<int> countRecords(String storeName, {String? query}) async {
     final store = _getStore(storeName);
+    if (query != null && query.isNotEmpty) {
+      final filter = Filter.custom((record) {
+        return record.value.toString().toLowerCase().contains(query.toLowerCase());
+      });
+      return await store.count(db, filter: filter);
+    }
     return await store.count(db);
   }
 
-  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName, {int offset = 0, int limit = 200}) async {
+  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName, {int offset = 0, int limit = 200, String? query}) async {
     final store = _getStore(storeName);
-    return await store.find(db, finder: Finder(offset: offset, limit: limit));
+    Filter? filter;
+    if (query != null && query.isNotEmpty) {
+      filter = Filter.custom((record) {
+        return record.value.toString().toLowerCase().contains(query.toLowerCase());
+      });
+    }
+    return await store.find(db, finder: Finder(offset: offset, limit: limit, filter: filter));
   }
 
   Future<dynamic> addRecord(String storeName, Map<String, dynamic> data) async {
@@ -54,6 +67,13 @@ class GenericRepository {
   Future<void> deleteStore(String storeName) async {
     final store = _getStore(storeName);
     await store.drop(db);
+    // Force database compaction so the store is completely removed from the file,
+    // which allows getStoreNames() to no longer see it.
+    try {
+      await (db as dynamic).compact();
+    } catch (e) {
+      debugPrint('Compact failed: $e');
+    }
   }
 
   Future<void> clearStore(String storeName) async {
