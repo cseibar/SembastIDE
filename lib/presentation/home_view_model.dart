@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:sembast/sembast.dart';
 import '../data/generic_repository.dart';
@@ -97,14 +99,29 @@ class HomeViewModel extends _$HomeViewModel {
   }
 
   Future<void> loadRecords(String storeName) async {
+    debugPrint('loadRecords started for store: $storeName');
     state = state.copyWith(isLoading: true, selectedStore: storeName, error: null);
     try {
       final repo = _getRepo();
-      
       final records = await repo.getAllRecords(storeName);
       state = state.copyWith(records: records, isLoading: false);
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('Error loading records: $e\n$stack');
       state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  Future<void> recoverStore(String storeName) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final dbService = ref.read(databaseServiceProvider);
+      final rawData = await dbService.recoverStoreData(storeName);
+      
+      final recoveredRecords = rawData.map((data) => _RecoveredRecord(data['key'], data['value'])).toList();
+      
+      state = state.copyWith(records: recoveredRecords, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Error recovering store: $e');
     }
   }
 
@@ -190,3 +207,25 @@ class HomeViewModel extends _$HomeViewModel {
   }
 }
 
+class _RecoveredRecord implements RecordSnapshot<dynamic, dynamic> {
+  @override
+  final dynamic key;
+  @override
+  final dynamic value;
+
+  _RecoveredRecord(this.key, this.value);
+
+  @override
+  RecordRef<dynamic, dynamic> get ref => throw UnimplementedError();
+
+  @override
+  RecordSnapshot<RK, RV> cast<RK, RV>() => throw UnimplementedError();
+
+  @override
+  dynamic operator [](String field) {
+    if (value is Map) {
+      return (value as Map)[field];
+    }
+    return null;
+  }
+}

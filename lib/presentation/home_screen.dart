@@ -1,10 +1,12 @@
-import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../utils/export_service.dart';
 import 'home_view_model.dart';
+import 'providers.dart';
 import 'record_editor_dialog.dart';
+import 'widgets/records_table.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -163,8 +165,10 @@ class HomeScreen extends ConsumerWidget {
                     Expanded(
                       child: state.selectedStore == null
                           ? const Center(child: Text('Select a store'))
-                          : Column(
-                              children: [
+                          : state.error != null
+                              ? Center(child: Text('Error loading records:\n${state.error}', style: const TextStyle(color: Colors.red), textAlign: TextAlign.center))
+                              : Column(
+                                  children: [
                                 Padding(
                                   padding: const EdgeInsets.all(16.0),
                                   child: Row(
@@ -185,54 +189,58 @@ class HomeScreen extends ConsumerWidget {
                                   ),
                                 ),
                                 Expanded(
-                                  child: ListView.builder(
-                                    itemCount: state.records.length,
-                                    itemBuilder: (context, index) {
-                                      final record = state.records[index];
-                                      final jsonStr = const JsonEncoder.withIndent('  ').convert(record.value);
-                                      return Card(
-                                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        child: ExpansionTile(
-                                          title: Text('Key: ${record.key}'),
-                                          children: [
-                                            Padding(
-                                              padding: const EdgeInsets.all(16.0),
-                                              child: Container(
-                                                width: double.infinity,
-                                                padding: const EdgeInsets.all(12),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black26,
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                child: Text(
-                                                  jsonStr,
-                                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                                  child: state.records.isEmpty
+                                      ? Center(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Text('No records found.'),
+                                              const SizedBox(height: 16),
+                                              ElevatedButton.icon(
+                                                onPressed: () {
+                                                  viewModel.recoverStore(state.selectedStore!);
+                                                },
+                                                icon: const Icon(Icons.build),
+                                                label: const Text('Force Recover Corrupted Data'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.orange,
+                                                  foregroundColor: Colors.white,
                                                 ),
                                               ),
-                                            ),
-                                            OverflowBar(
-                                              children: [
-                                                TextButton.icon(
-                                                  icon: const Icon(Icons.edit, color: Colors.blueAccent),
-                                                  label: const Text('Edit'),
-                                                  onPressed: () {
-                                                    _showEditor(context, ref, record.key, record.value);
-                                                  },
-                                                ),
-                                                TextButton.icon(
-                                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                                                  label: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
-                                                  onPressed: () async {
-                                                    await viewModel.deleteRecord(record.key);
-                                                  },
-                                                ),
-                                              ],
-                                            )
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                              const SizedBox(height: 16),
+                                              ElevatedButton(
+                                                onPressed: () async {
+                                                  final lines = await ref.read(databaseServiceProvider).getRawLinesForStore(state.selectedStore!);
+                                                  if (context.mounted) {
+                                                    showDialog(
+                                                      context: context,
+                                                      builder: (context) => AlertDialog(
+                                                        title: Text('Raw Data for ${state.selectedStore}'),
+                                                        content: SizedBox(
+                                                          width: double.maxFinite,
+                                                          child: SingleChildScrollView(
+                                                            child: Text(
+                                                              lines.isEmpty ? 'The file has NO lines with this store name.' : lines.join('\n'),
+                                                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () => Navigator.pop(context),
+                                                            child: const Text('Close'),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                child: const Text('Debug Raw File Content'),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : RecordsTable(records: state.records),
                                 ),
                               ],
                             ),
