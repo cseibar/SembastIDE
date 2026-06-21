@@ -1,5 +1,6 @@
 import 'package:sembast/sembast.dart';
 import 'package:flutter/foundation.dart';
+import 'models/column_filter.dart';
 
 class GenericRepository {
   final Database db;
@@ -13,26 +14,66 @@ class GenericRepository {
     return StoreRef(storeName);
   }
 
-  Future<int> countRecords(String storeName, {String? query}) async {
+  Future<int> countRecords(String storeName, {String? query, List<ColumnFilter> columnFilters = const []}) async {
     final store = _getStore(storeName);
-    if (query != null && query.isNotEmpty) {
+    if ((query != null && query.isNotEmpty) || columnFilters.isNotEmpty) {
       final filter = Filter.custom((record) {
-        return record.value.toString().toLowerCase().contains(query.toLowerCase());
+        if (query != null && query.isNotEmpty) {
+          if (!record.value.toString().toLowerCase().contains(query.toLowerCase())) {
+            return false;
+          }
+        }
+        
+        for (final cf in columnFilters) {
+          dynamic val;
+          if (record.value is Map) {
+            val = (record.value as Map)[cf.column];
+          }
+          if (!cf.evaluate(val)) {
+            return false;
+          }
+        }
+        return true;
       });
       return await store.count(db, filter: filter);
     }
     return await store.count(db);
   }
 
-  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName, {int offset = 0, int limit = 200, String? query}) async {
+  Future<List<RecordSnapshot<dynamic, dynamic>>> getAllRecords(String storeName, {int offset = 0, int limit = 200, String? query, List<ColumnFilter> columnFilters = const [], String? sortColumn, bool sortAscending = true}) async {
     final store = _getStore(storeName);
     Filter? filter;
-    if (query != null && query.isNotEmpty) {
+    if ((query != null && query.isNotEmpty) || columnFilters.isNotEmpty) {
       filter = Filter.custom((record) {
-        return record.value.toString().toLowerCase().contains(query.toLowerCase());
+        if (query != null && query.isNotEmpty) {
+          if (!record.value.toString().toLowerCase().contains(query.toLowerCase())) {
+            return false;
+          }
+        }
+        
+        for (final cf in columnFilters) {
+          dynamic val;
+          if (record.value is Map) {
+            val = (record.value as Map)[cf.column];
+          }
+          if (!cf.evaluate(val)) {
+            return false;
+          }
+        }
+        return true;
       });
     }
-    return await store.find(db, finder: Finder(offset: offset, limit: limit, filter: filter));
+    
+    List<SortOrder>? sortOrders;
+    if (sortColumn != null) {
+      if (sortColumn == 'Key') {
+        sortOrders = [SortOrder(Field.key, sortAscending)];
+      } else {
+        sortOrders = [SortOrder(sortColumn, sortAscending)];
+      }
+    }
+    
+    return await store.find(db, finder: Finder(offset: offset, limit: limit, filter: filter, sortOrders: sortOrders));
   }
 
   Future<dynamic> addRecord(String storeName, Map<String, dynamic> data) async {

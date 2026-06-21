@@ -347,20 +347,20 @@ class HomeScreen extends ConsumerWidget {
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
                                               Text(
-                                                'Showing records ${(state.currentPage * 200) + 1} - ${((state.currentPage + 1) * 200).clamp(0, state.totalRecords)} of ${state.totalRecords}',
+                                                'Showing records ${((state.currentPage - 1) * 200) + 1} - ${(state.currentPage * 200).clamp(0, state.totalRecords)} of ${state.totalRecords}',
                                                 style: const TextStyle(fontWeight: FontWeight.bold),
                                               ),
                                               Row(
                                                 children: [
                                                   IconButton(
                                                     icon: const Icon(Icons.chevron_left),
-                                                    onPressed: state.currentPage > 0
+                                                    onPressed: state.currentPage > 1
                                                         ? () => viewModel.loadRecords(state.selectedStore!, page: state.currentPage - 1)
                                                         : null,
                                                   ),
                                                   IconButton(
                                                     icon: const Icon(Icons.chevron_right),
-                                                    onPressed: (state.currentPage + 1) * 200 < state.totalRecords
+                                                    onPressed: (state.currentPage * 200) < state.totalRecords
                                                         ? () => viewModel.loadRecords(state.selectedStore!, page: state.currentPage + 1)
                                                         : null,
                                                   ),

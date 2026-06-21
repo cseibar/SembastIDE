@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sembast/sembast.dart';
 import '../home_view_model.dart';
 import '../record_editor_dialog.dart';
+import 'column_filter_dialog.dart';
 
 class RecordsTable extends ConsumerStatefulWidget {
   final List<RecordSnapshot<dynamic, dynamic>> records;
@@ -17,11 +18,20 @@ class RecordsTable extends ConsumerStatefulWidget {
 class _RecordsTableState extends ConsumerState<RecordsTable> {
   late List<String> _columns;
   bool _anyNonMap = false;
+  final ScrollController _horizontalScrollController = ScrollController();
+  final ScrollController _verticalScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _extractColumns();
+  }
+
+  @override
+  void dispose() {
+    _horizontalScrollController.dispose();
+    _verticalScrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -69,14 +79,28 @@ class _RecordsTableState extends ConsumerState<RecordsTable> {
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(homeViewModelProvider);
+    final viewModel = ref.read(homeViewModelProvider.notifier);
 
+
+    int? sortColumnIndex;
+    if (state.sortColumn == 'Key') {
+      sortColumnIndex = 0;
+    } else if (state.sortColumn != null) {
+      final idx = _columns.indexOf(state.sortColumn!);
+      if (idx >= 0) {
+        sortColumnIndex = idx + 1;
+      }
+    }
 
     final usePagination = widget.records.length > 500;
 
     Widget tableWidget;
     if (usePagination) {
       tableWidget = PaginatedDataTable(
-        columns: _buildColumns(),
+        sortColumnIndex: sortColumnIndex,
+        sortAscending: state.sortAscending,
+        columns: _buildColumns(state, viewModel),
         source: _RecordDataSource(
           records: widget.records,
           columns: _columns,
@@ -100,28 +124,79 @@ class _RecordsTableState extends ConsumerState<RecordsTable> {
         },
       );
       tableWidget = DataTable(
-        columns: _buildColumns(),
+        sortColumnIndex: sortColumnIndex,
+        sortAscending: state.sortAscending,
+        columns: _buildColumns(state, viewModel),
         rows: List.generate(widget.records.length, (index) => source.getRow(index)!),
         showCheckboxColumn: false,
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
+    return Scrollbar(
+      controller: _verticalScrollController,
+      thumbVisibility: true,
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: tableWidget,
+        controller: _verticalScrollController,
+        scrollDirection: Axis.vertical,
+        child: Scrollbar(
+          controller: _horizontalScrollController,
+          thumbVisibility: true,
+          notificationPredicate: (notif) => notif.depth == 0,
+          child: SingleChildScrollView(
+            controller: _horizontalScrollController,
+            scrollDirection: Axis.horizontal,
+            child: tableWidget,
+          ),
+        ),
       ),
     );
   }
 
-  List<DataColumn> _buildColumns() {
+  List<DataColumn> _buildColumns(HomeState state, HomeViewModel viewModel) {
+    void showFilter(String colName) {
+      final existingFilter = state.columnFilters.where((f) => f.column == colName).firstOrNull;
+      showDialog(
+        context: context,
+        builder: (ctx) => ColumnFilterDialog(
+          columnName: colName,
+          initialFilter: existingFilter,
+          onApply: (filter) {
+            if (filter == null) {
+              viewModel.removeColumnFilter(colName);
+            } else {
+              viewModel.setColumnFilter(filter);
+            }
+          },
+        ),
+      );
+    }
+
     final cols = [
-      const DataColumn(label: Text('Key', style: TextStyle(fontWeight: FontWeight.bold))),
+      DataColumn(
+        label: const Text('Key', style: TextStyle(fontWeight: FontWeight.bold)),
+        onSort: (columnIndex, ascending) => viewModel.setSortColumn('Key'),
+      ),
     ];
     
     for (var col in _columns) {
-      cols.add(DataColumn(label: Text(col, style: const TextStyle(fontWeight: FontWeight.bold))));
+      final isFiltered = state.columnFilters.any((f) => f.column == col);
+      cols.add(DataColumn(
+        onSort: (columnIndex, ascending) => viewModel.setSortColumn(col),
+        label: GestureDetector(
+          onSecondaryTapDown: (_) => showFilter(col),
+          onLongPress: () => showFilter(col),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(col, style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (isFiltered) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.filter_alt, size: 14, color: Colors.blue),
+              ]
+            ],
+          ),
+        ),
+      ));
     }
     
     // Fallback column if there are non-map values
