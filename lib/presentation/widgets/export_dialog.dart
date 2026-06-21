@@ -58,22 +58,22 @@ class _ExportDialogState extends State<ExportDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Format Selection
-            Row(
-              children: [
-                const Text('Format: '),
-                Radio<String>(
-                  value: 'CSV',
-                  groupValue: _selectedFormat,
-                  onChanged: (val) => setState(() => _selectedFormat = val!),
-                ),
-                const Text('CSV'),
-                Radio<String>(
-                  value: 'JSON',
-                  groupValue: _selectedFormat,
-                  onChanged: (val) => setState(() => _selectedFormat = val!),
-                ),
-                const Text('JSON'),
-              ],
+            RadioGroup<String>(
+              groupValue: _selectedFormat,
+              onChanged: (val) => setState(() => _selectedFormat = val!),
+              child: Row(
+                children: [
+                  const Text('Format: '),
+                  Radio<String>(
+                    value: 'CSV',
+                  ),
+                  const Text('CSV'),
+                  Radio<String>(
+                    value: 'JSON',
+                  ),
+                  const Text('JSON'),
+                ],
+              ),
             ),
             const Divider(),
             

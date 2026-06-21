@@ -42,7 +42,7 @@ class _ColumnFilterDialogState extends State<ColumnFilterDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<ColumnFilterType>(
-            value: _selectedType,
+            initialValue: _selectedType,
             items: ColumnFilterType.values.map((type) {
               return DropdownMenuItem(
                 value: type,
