@@ -179,11 +179,23 @@ class HomeScreen extends ConsumerWidget {
                         width: 250,
                         child: Column(
                           children: [
-                          const Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Text(
-                              'Stores',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Stores',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh, size: 20),
+                                  tooltip: 'Refresh',
+                                  onPressed: () async {
+                                    await viewModel.refreshStores();
+                                  },
+                                ),
+                              ],
                             ),
                           ),
                           Expanded(
@@ -275,6 +287,13 @@ class HomeScreen extends ConsumerWidget {
                                             Text(
                                               'Records in ${state.selectedStore}',
                                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.refresh, size: 20),
+                                              tooltip: 'Refresh records',
+                                              onPressed: () async {
+                                                await viewModel.refreshStores();
+                                              },
                                             ),
                                             const SizedBox(width: 24),
                                             Expanded(

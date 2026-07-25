@@ -280,6 +280,10 @@ class HomeViewModel extends _$HomeViewModel {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final dbService = ref.read(databaseServiceProvider);
+      
+      // Re-open the database to ensure we get the latest external changes
+      await dbService.openDatabase(state.dbPath!);
+      
       final stores = await dbService.getStoreNames();
 
       // Keep selected store if it still exists
