@@ -198,11 +198,31 @@ class HomeScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0).copyWith(bottom: 8.0),
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                hintText: 'Buscar store...',
+                                prefixIcon: Icon(Icons.search, size: 18),
+                                isDense: true,
+                                contentPadding: EdgeInsets.all(8),
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (value) {
+                                viewModel.setStoreSearchQuery(value);
+                              },
+                            ),
+                          ),
                           Expanded(
-                            child: ListView.builder(
-                              itemCount: state.storeNames.length,
-                              itemBuilder: (context, index) {
-                                final store = state.storeNames[index];
+                            child: Builder(
+                              builder: (context) {
+                                final filteredStores = state.storeNames
+                                    .where((s) => s.toLowerCase().contains(state.storeSearchQuery.toLowerCase()))
+                                    .toList();
+                                return ListView.builder(
+                                  itemCount: filteredStores.length,
+                                  itemBuilder: (context, index) {
+                                    final store = filteredStores[index];
                                 final isSelected = store == state.selectedStore;
                                 return GestureDetector(
                                   onSecondaryTapDown: (details) {
@@ -261,8 +281,10 @@ class HomeScreen extends ConsumerWidget {
                                   ),
                                 );
                               },
-                            ),
+                            );
+                           },
                           ),
+                         ),
                         ],
                       ),
                     ),

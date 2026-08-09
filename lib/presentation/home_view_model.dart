@@ -27,6 +27,7 @@ class HomeState {
   final List<ColumnFilter> columnFilters;
   final String? sortColumn;
   final bool sortAscending;
+  final String storeSearchQuery;
 
   HomeState({
     this.dbPath,
@@ -42,6 +43,7 @@ class HomeState {
     this.columnFilters = const [],
     this.sortColumn,
     this.sortAscending = true,
+    this.storeSearchQuery = '',
   });
 
   HomeState copyWith({
@@ -58,6 +60,7 @@ class HomeState {
     List<ColumnFilter>? columnFilters,
     String? sortColumn,
     bool? sortAscending,
+    String? storeSearchQuery,
   }) {
     return HomeState(
       dbPath: dbPath ?? this.dbPath,
@@ -73,6 +76,7 @@ class HomeState {
       columnFilters: columnFilters ?? this.columnFilters,
       sortColumn: sortColumn ?? this.sortColumn,
       sortAscending: sortAscending ?? this.sortAscending,
+      storeSearchQuery: storeSearchQuery ?? this.storeSearchQuery,
     );
   }
 }
@@ -178,6 +182,10 @@ class HomeViewModel extends _$HomeViewModel {
     if (state.selectedStore != null) {
       await loadRecords(state.selectedStore!, page: 1);
     }
+  }
+
+  void setStoreSearchQuery(String query) {
+    state = state.copyWith(storeSearchQuery: query);
   }
 
   Future<void> setSortColumn(String column) async {

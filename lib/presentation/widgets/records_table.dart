@@ -133,15 +133,16 @@ class _RecordsTableState extends ConsumerState<RecordsTable> {
     }
 
     return Scrollbar(
-      controller: _verticalScrollController,
+      controller: _horizontalScrollController,
       thumbVisibility: true,
-      child: SingleChildScrollView(
+      notificationPredicate: (notif) => notif.metrics.axis == Axis.horizontal,
+      child: Scrollbar(
         controller: _verticalScrollController,
-        scrollDirection: Axis.vertical,
-        child: Scrollbar(
-          controller: _horizontalScrollController,
-          thumbVisibility: true,
-          notificationPredicate: (notif) => notif.depth == 0,
+        thumbVisibility: true,
+        notificationPredicate: (notif) => notif.metrics.axis == Axis.vertical,
+        child: SingleChildScrollView(
+          controller: _verticalScrollController,
+          scrollDirection: Axis.vertical,
           child: SingleChildScrollView(
             controller: _horizontalScrollController,
             scrollDirection: Axis.horizontal,
