@@ -1,4 +1,8 @@
 
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:window_manager/window_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,8 +17,24 @@ import 'widgets/new_db_dialog.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
+  void _updateWindowTitle(String? dbPath) {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      final title = (dbPath != null && dbPath.isNotEmpty)
+          ? p.basename(dbPath)
+          : 'Sembast IDE';
+      windowManager.setTitle(title);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<String?>(
+      homeViewModelProvider.select((s) => s.dbPath),
+      (previous, next) {
+        _updateWindowTitle(next);
+      },
+    );
+
     final state = ref.watch(homeViewModelProvider);
     final viewModel = ref.read(homeViewModelProvider.notifier);
 
