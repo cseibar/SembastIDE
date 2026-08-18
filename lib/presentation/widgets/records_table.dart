@@ -237,7 +237,10 @@ class _RecordDataSource extends DataTableSource {
     final mapValue = isMap ? (record.value as Map) : null;
 
     final cells = <DataCell>[
-      DataCell(Text(record.key.toString())),
+      DataCell(
+        Text(record.key.toString()),
+        onDoubleTap: () => onEdit(record.key, record.value),
+      ),
     ];
 
     for (var col in columns) {
@@ -245,20 +248,35 @@ class _RecordDataSource extends DataTableSource {
         // Check for string key first, then fallback to other types if possible, though our columns are strings
         final val = mapValue![col];
         if (val != null || mapValue.containsKey(col)) {
-          cells.add(DataCell(_buildCellText(val)));
+          cells.add(DataCell(
+            _buildCellText(val),
+            onDoubleTap: () => onEdit(record.key, record.value),
+          ));
         } else {
-          cells.add(const DataCell(Text('-')));
+          cells.add(DataCell(
+            const Text('-'),
+            onDoubleTap: () => onEdit(record.key, record.value),
+          ));
         }
       } else {
-        cells.add(const DataCell(Text('-')));
+        cells.add(DataCell(
+          const Text('-'),
+          onDoubleTap: () => onEdit(record.key, record.value),
+        ));
       }
     }
 
     if (anyNonMap) {
       if (!isMap) {
-        cells.add(DataCell(_buildCellText(record.value)));
+        cells.add(DataCell(
+          _buildCellText(record.value),
+          onDoubleTap: () => onEdit(record.key, record.value),
+        ));
       } else {
-        cells.add(const DataCell(Text('-')));
+        cells.add(DataCell(
+          const Text('-'),
+          onDoubleTap: () => onEdit(record.key, record.value),
+        ));
       }
     }
 
